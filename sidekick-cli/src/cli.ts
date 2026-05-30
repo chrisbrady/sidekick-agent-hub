@@ -29,7 +29,8 @@ program
   .version(__CLI_VERSION__)
   .option('--json', 'Output as JSON')
   .option('--project <path>', 'Override project path (default: cwd)')
-  .option('--provider <id>', 'Provider: claude-code, opencode, codex, auto (default: auto)');
+  .option('--provider <id>', 'Provider: claude-code, opencode, codex, auto (default: auto)')
+  .option('--claude-dir <dir>', 'Claude config directory name or path (default: .claude)');
 
 program.hook('preAction', async () => {
   await defaultAccountsReady;
@@ -48,13 +49,13 @@ export function resolveProviderId(
   return detectProvider();
 }
 
-export function resolveProvider(opts: { provider?: string }): SessionProvider {
+export function resolveProvider(opts: { provider?: string; claudeDir?: string }): SessionProvider {
   const id = resolveProviderId(opts);
   switch (id) {
     case 'opencode': return new OpenCodeProvider();
     case 'codex': return new CodexProvider();
     case 'claude-code':
-    default: return new ClaudeCodeProvider();
+    default: return new ClaudeCodeProvider(opts.claudeDir ? { claudeDir: opts.claudeDir } : undefined);
   }
 }
 

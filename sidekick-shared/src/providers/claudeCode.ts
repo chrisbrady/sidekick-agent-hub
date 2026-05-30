@@ -175,24 +175,31 @@ export class ClaudeCodeProvider implements SessionProviderBase {
   /** Runtime-reported context window limit (overrides static map when set). */
   private dynamicContextWindowLimit: number | null = null;
 
+  /** Optional override for the Claude config directory (default: `.claude`). */
+  private readonly claudeDir: string | undefined;
+
+  constructor(options?: { claudeDir?: string }) {
+    this.claudeDir = options?.claudeDir;
+  }
+
   // --- Path resolution ---
 
   getSessionDirectory(workspacePath: string): string {
-    return getSessionDir(workspacePath);
+    return getSessionDir(workspacePath, this.claudeDir);
   }
 
   discoverSessionDirectory(workspacePath: string): string | null {
-    return discoverSessionDir(workspacePath);
+    return discoverSessionDir(workspacePath, this.claudeDir);
   }
 
   // --- Session discovery ---
 
   findActiveSession(workspacePath: string): string | null {
-    return findActiveSessionPath(workspacePath);
+    return findActiveSessionPath(workspacePath, this.claudeDir);
   }
 
   findAllSessions(workspacePath: string): string[] {
-    return findAllSessionPaths(workspacePath);
+    return findAllSessionPaths(workspacePath, this.claudeDir);
   }
 
   /** Backward-compatible alias for findAllSessions. */
@@ -205,7 +212,7 @@ export class ClaudeCodeProvider implements SessionProviderBase {
   }
 
   getAllProjectFolders(workspacePath?: string): ProjectFolderInfo[] {
-    return getAllProjectFoldersRaw(workspacePath);
+    return getAllProjectFoldersRaw(workspacePath, this.claudeDir);
   }
 
   // --- File identification ---
@@ -342,7 +349,10 @@ export class ClaudeCodeProvider implements SessionProviderBase {
   }
 
   getProjectsBaseDir(): string {
-    return path.join(os.homedir(), '.claude', 'projects');
+    const base = this.claudeDir
+      ? (path.isAbsolute(this.claudeDir) ? this.claudeDir : path.join(os.homedir(), this.claudeDir))
+      : path.join(os.homedir(), '.claude');
+    return path.join(base, 'projects');
   }
 
   // --- Stats ---

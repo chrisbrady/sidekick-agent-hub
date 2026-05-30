@@ -16,6 +16,23 @@ import * as os from 'os';
 
 import type { ProjectFolderInfo } from '../providers/types';
 
+/** Default Claude Code configuration directory name (relative to home dir). */
+export const DEFAULT_CLAUDE_DIR = '.claude';
+
+/**
+ * Returns the absolute path to the Claude Code projects directory.
+ *
+ * @param claudeDir - Directory name (or absolute path) of the Claude config dir.
+ *   Defaults to `.claude`, which resolves to `~/.claude`.
+ *   When an absolute path is provided it is used directly (e.g. `/custom/.claude`).
+ *   When a relative name is provided it is resolved relative to the home directory.
+ * @returns Absolute path to the `projects` sub-directory (e.g. `~/.claude/projects`).
+ */
+function getClaudeProjectsDir(claudeDir: string = DEFAULT_CLAUDE_DIR): string {
+  const base = path.isAbsolute(claudeDir) ? claudeDir : path.join(os.homedir(), claudeDir);
+  return path.join(base, 'projects');
+}
+
 /**
  * Encodes a workspace path to Claude Code's directory naming scheme.
  *
@@ -51,6 +68,7 @@ export function encodeWorkspacePath(workspacePath: string): string {
  * for the given workspace, even if the directory doesn't exist.
  *
  * @param workspacePath - Absolute path to workspace directory
+ * @param claudeDir - Override for the Claude config directory (default: `.claude`)
  * @returns Absolute path to session directory
  *
  * @example
@@ -59,9 +77,9 @@ export function encodeWorkspacePath(workspacePath: string): string {
  * // => "/home/user/.claude/projects/-home-user-code-project"
  * ```
  */
-export function getSessionDirectory(workspacePath: string): string {
+export function getSessionDirectory(workspacePath: string, claudeDir?: string): string {
   const encoded = encodeWorkspacePath(workspacePath);
-  return path.join(os.homedir(), '.claude', 'projects', encoded);
+  return path.join(getClaudeProjectsDir(claudeDir), encoded);
 }
 
 /** How recently a file must be modified to be considered "active" (5 minutes) */
@@ -76,6 +94,7 @@ const ACTIVE_SESSION_THRESHOLD_MS = 5 * 60 * 1000;
  * `~/.claude/projects/-home-user-project-packages-app/` which we need to find.
  *
  * @param workspacePath - Absolute path to workspace directory
+ * @param claudeDir - Override for the Claude config directory (default: `.claude`)
  * @returns Array of matching session directory paths
  *
  * @example
@@ -86,8 +105,8 @@ const ACTIVE_SESSION_THRESHOLD_MS = 5 * 60 * 1000;
  * // => ["/home/user/.claude/projects/-home-user-project-packages-app"]
  * ```
  */
-export function findSubdirectorySessionDirs(workspacePath: string): string[] {
-  const projectsDir = path.join(os.homedir(), '.claude', 'projects');
+export function findSubdirectorySessionDirs(workspacePath: string, claudeDir?: string): string[] {
+  const projectsDir = getClaudeProjectsDir(claudeDir);
 
   try {
     if (!fs.existsSync(projectsDir)) {
@@ -178,17 +197,18 @@ export function getMostRecentlyActiveSessionDir(sessionDirs: string[]): string |
  *
  * Strategy order:
  * 1. Try the computed encoded path (fast, works if our encoding matches Claude Code's)
- * 2. Scan ~/.claude/projects/ for directories matching the workspace name
+ * 2. Scan the projects directory for directories matching the workspace name
  * 3. Scan temp directory for Claude scratchpad directories to find actual encoding
  *
  * @param workspacePath - Absolute path to workspace directory
+ * @param claudeDir - Override for the Claude config directory (default: `.claude`)
  * @returns Absolute path to session directory, or null if not found
  */
-export function discoverSessionDirectory(workspacePath: string): string | null {
-  const projectsDir = path.join(os.homedir(), '.claude', 'projects');
+export function discoverSessionDirectory(workspacePath: string, claudeDir?: string): string | null {
+  const projectsDir = getClaudeProjectsDir(claudeDir);
 
   // Strategy 1: Try computed encoded path (exact match)
-  const computedDir = getSessionDirectory(workspacePath);
+  const computedDir = getSessionDirectory(workspacePath, claudeDir);
   if (fs.existsSync(computedDir)) {
     return computedDir;
   }
@@ -197,7 +217,7 @@ export function discoverSessionDirectory(workspacePath: string): string | null {
   // When Claude Code starts from a subdirectory of the workspace, the session
   // is stored in a directory matching the subdirectory path. We find the most
   // recently active one.
-  const subdirMatches = findSubdirectorySessionDirs(workspacePath);
+  const subdirMatches = findSubdirectorySessionDirs(workspacePath, claudeDir);
   if (subdirMatches.length > 0) {
     const mostRecent = getMostRecentlyActiveSessionDir(subdirMatches);
     if (mostRecent) {
@@ -205,7 +225,7 @@ export function discoverSessionDirectory(workspacePath: string): string | null {
     }
   }
 
-  // Strategy 2: Scan ~/.claude/projects/ for matching directories
+  // Strategy 2: Scan the projects directory for matching directories
   try {
     if (fs.existsSync(projectsDir)) {
       const existingDirs = fs.readdirSync(projectsDir).filter(name => {
@@ -294,6 +314,7 @@ export function discoverSessionDirectory(workspacePath: string): string | null {
  * stale ones. This helps select the right session when multiple exist.
  *
  * @param workspacePath - Absolute path to workspace directory
+ * @param claudeDir - Override for the Claude config directory (default: `.claude`)
  * @returns Path to active session file, or null if none exists
  *
  * @example
@@ -306,9 +327,9 @@ export function discoverSessionDirectory(workspacePath: string): string | null {
  * }
  * ```
  */
-export function findActiveSession(workspacePath: string): string | null {
+export function findActiveSession(workspacePath: string, claudeDir?: string): string | null {
   // Use discovery to find the session directory (handles encoding differences)
-  const sessionDir = discoverSessionDirectory(workspacePath);
+  const sessionDir = discoverSessionDirectory(workspacePath, claudeDir);
 
   try {
     // Check if directory was found
@@ -366,6 +387,7 @@ export function findActiveSession(workspacePath: string): string | null {
  * session history features.
  *
  * @param workspacePath - Absolute path to workspace directory
+ * @param claudeDir - Override for the Claude config directory (default: `.claude`)
  * @returns Array of session file paths (empty if none exist)
  *
  * @example
@@ -375,9 +397,9 @@ export function findActiveSession(workspacePath: string): string | null {
  * sessions.forEach(session => console.log(session));
  * ```
  */
-export function findAllSessions(workspacePath: string): string[] {
+export function findAllSessions(workspacePath: string, claudeDir?: string): string[] {
   // Use discovery to find the session directory (handles encoding differences)
-  const sessionDir = discoverSessionDirectory(workspacePath);
+  const sessionDir = discoverSessionDirectory(workspacePath, claudeDir);
 
   try {
     // Check if directory was found
@@ -458,6 +480,7 @@ export function decodeEncodedPath(encoded: string): string {
  * 3. Most recently active (based on session file modification times)
  *
  * @param workspacePath - Optional workspace path to prioritize in sorting
+ * @param claudeDir - Override for the Claude config directory (default: `.claude`)
  * @returns Array of project folder info, sorted by priority
  *
  * @example
@@ -475,8 +498,8 @@ export function decodeEncodedPath(encoded: string): string {
  * // ]
  * ```
  */
-export function getAllProjectFolders(workspacePath?: string): ProjectFolderInfo[] {
-  const projectsDir = path.join(os.homedir(), '.claude', 'projects');
+export function getAllProjectFolders(workspacePath?: string, claudeDir?: string): ProjectFolderInfo[] {
+  const projectsDir = getClaudeProjectsDir(claudeDir);
   const folders: ProjectFolderInfo[] = [];
 
   try {
